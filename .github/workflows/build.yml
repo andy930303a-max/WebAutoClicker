@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Auto Generate and Build APK
 
 on:
   push:
@@ -9,9 +9,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -21,13 +18,292 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Build Debug APK
+      - name: Generate Project Files
         run: |
-          gradle wrapper
-          ./gradlew assembleDebug
+          mkdir -p app/src/main/java/com/example/webautoclicker
+          mkdir -p app/src/main/res/layout
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: WebAutoClicker-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "WebAutoClicker"
+          include(":app")
+          EOF
+
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+          }
+          EOF
+
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.example.webautoclicker"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.example.webautoclicker"
+                  minSdk = 24
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.appcompat:appcompat:1.6.1")
+              implementation("com.google.android.material:material:1.11.0")
+              implementation("org.opencv:opencv:4.9.0")
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://android.com">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <application
+                  android:allowBackup="true"
+                  android:label="網頁自動點擊器"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
+                  android:usesCleartextTraffic="true">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          cat << 'EOF' > app/src/main/res/layout/activity_main.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://android.com"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical"
+              android:padding="12dp">
+              <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                  <EditText android:id="@+id/etUrl" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:hint="輸入網址" android:inputType="textUri" android:text="https://" />
+                  <Button android:id="@+id/btnLoadUrl" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="前往" />
+              </LinearLayout>
+              <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+                  <Button android:id="@+id/btnSelectImg" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="選擇目標圖片" />
+                  <ImageView android:id="@+id/ivTargetPreview" android:layout_width="40dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:background="#EEEEEE" />
+                  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="相似度:" />
+                  <EditText android:id="@+id/etConfidence" android:layout_width="55dp" android:layout_height="wrap_content" android:inputType="numberDecimal" android:text="0.85" />
+              </LinearLayout>
+              <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+                  <RadioGroup android:id="@+id/rgMode" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+                      <RadioButton android:id="@+id/rbOnce" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:text="點一次" />
+                      <RadioButton android:id="@+id/rbLoop" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="連點" />
+                  </RadioGroup>
+                  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="冷卻(秒):" />
+                  <EditText android:id="@+id/etDelay" android:layout_width="50dp" android:layout_height="wrap_content" android:inputType="numberDecimal" android:text="0.5" />
+              </LinearLayout>
+              <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+                  <TextView android:id="@+id/tvStatus" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="狀態：待機中" android:textColor="#1976D2" android:textStyle="bold" />
+                  <Button android:id="@+id/btnStart" android:layout_width="wrap_content" android:layout_height="wrap_content" android:backgroundTint="#4CAF50" android:text="開始" />
+                  <Button android:id="@+id/btnStop" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:backgroundTint="#F44336" android:enabled="false" android:text="停止" />
+              </LinearLayout>
+              <WebView android:id="@+id/webView" android:layout_width="match_parent" android:layout_height="0dp" android:layout_marginTop="8dp" android:layout_weight="1" />
+          </LinearLayout>
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/example/webautoclicker/MainActivity.kt
+          package com.example.webautoclicker
+
+          import android.annotation.SuppressLint
+          import android.graphics.Bitmap
+          import android.graphics.BitmapFactory
+          import android.graphics.Canvas
+          import android.graphics.Point
+          import android.net.Uri
+          import android.os.Bundle
+          import android.os.Handler
+          import android.os.Looper
+          import android.webkit.WebView
+          import android.webkit.WebViewClient
+          import android.widget.*
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.appcompat.app.AppCompatActivity
+          import org.opencv.android.OpenCVLoader
+          import org.opencv.android.Utils
+          import org.opencv.core.Core
+          import org.opencv.core.Mat
+          import org.opencv.imgproc.Imgproc
+          import java.util.concurrent.CountDownLatch
+          import java.util.concurrent.Executors
+          import java.util.concurrent.atomic.AtomicBoolean
+
+          class MainActivity : AppCompatActivity() {
+              private lateinit var etUrl: EditText
+              private lateinit var btnLoadUrl: Button
+              private lateinit var btnSelectImg: Button
+              private lateinit var ivTargetPreview: ImageView
+              private lateinit var etConfidence: EditText
+              private lateinit var rgMode: RadioGroup
+              private lateinit var etDelay: EditText
+              private lateinit var tvStatus: TextView
+              private lateinit var btnStart: Button
+              private lateinit var btnStop: Button
+              private lateinit var webView: WebView
+
+              private var targetBitmap: Bitmap? = null
+              private val isRunning = AtomicBoolean(false)
+              private val mainHandler = Handler(Looper.getMainLooper())
+              private val executor = Executors.newSingleThreadExecutor()
+
+              private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+                  uri?.let {
+                      val inputStream = contentResolver.openInputStream(it)
+                      val bitmap = BitmapFactory.decodeStream(inputStream)
+                      if (bitmap != null && bitmap.width >= 5 && bitmap.height >= 5) {
+                          targetBitmap = bitmap
+                          ivTargetPreview.setImageBitmap(bitmap)
+                          tvStatus.text = "狀態：已載入圖片"
+                      } else {
+                          Toast.makeText(this, "圖片無效或過小", Toast.LENGTH_SHORT).show()
+                      }
+                  }
+              }
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+                  OpenCVLoader.initLocal()
+                  etUrl = findViewById(R.id.etUrl)
+                  btnLoadUrl = findViewById(R.id.btnLoadUrl)
+                  btnSelectImg = findViewById(R.id.btnSelectImg)
+                  ivTargetPreview = findViewById(R.id.ivTargetPreview)
+                  etConfidence = findViewById(R.id.etConfidence)
+                  rgMode = findViewById(R.id.rgMode)
+                  etDelay = findViewById(R.id.etDelay)
+                  tvStatus = findViewById(R.id.tvStatus)
+                  btnStart = findViewById(R.id.btnStart)
+                  btnStop = findViewById(R.id.btnStop)
+                  webView = findViewById(R.id.webView)
+
+                  @SuppressLint("SetJavaScriptEnabled")
+                  webView.settings.apply {
+                      javaScriptEnabled = true
+                      domStorageEnabled = true
+                      useWideViewPort = true
+                      loadWithOverviewMode = true
+                  }
+                  webView.webViewClient = WebViewClient()
+
+                  btnLoadUrl.setOnClickListener {
+                      val url = etUrl.text.toString().trim()
+                      if (url.startsWith("http")) webView.loadUrl(url)
+                  }
+                  btnSelectImg.setOnClickListener { pickImageLauncher.launch("image/*") }
+                  btnStart.setOnClickListener { startDetection() }
+                  btnStop.setOnClickListener { stopDetection("狀態：已停止") }
+              }
+
+              private fun startDetection() {
+                  val target = targetBitmap ?: return Toast.makeText(this, "請先選圖片", Toast.LENGTH_SHORT).show()
+                  val conf = etConfidence.text.toString().toDoubleOrNull() ?: 0.85
+                  val delaySec = etDelay.text.toString().toDoubleOrNull() ?: 0.5
+                  val isOnce = (rgMode.checkedRadioButtonId == R.id.rbOnce)
+                  isRunning.set(true)
+                  btnStart.isEnabled = false
+                  btnStop.isEnabled = true
+                  tvStatus.text = "狀態：偵測中..."
+                  executor.execute { detectionLoop(target, conf, (delaySec * 1000).toLong(), isOnce) }
+              }
+
+              private fun stopDetection(reason: String) {
+                  isRunning.set(false)
+                  mainHandler.post {
+                      btnStart.isEnabled = true
+                      btnStop.isEnabled = false
+                      tvStatus.text = reason
+                  }
+              }
+
+              private fun detectionLoop(targetBmp: Bitmap, threshold: Double, delayMs: Long, isOnceMode: Boolean) {
+                  var wasPresent = false
+                  var clickCount = 0
+                  while (isRunning.get()) {
+                      val screenBmp = captureWebView() ?: continue
+                      val matchCenter = findImageTemplate(screenBmp, targetBmp, threshold)
+                      screenBmp.recycle()
+                      if (matchCenter != null) {
+                          if (isOnceMode && wasPresent) { Thread.sleep(50); continue }
+                          wasPresent = true
+clickCount++
+val density = resources.displayMetrics.density
+val cssX = (matchCenter.x / density).toInt()
+val cssY = (matchCenter.y / density).toInt()
+mainHandler.post {
+webView.evaluateJavascript("(function(){var el=document.elementFromPoint($cssX,$cssY);if(el)el.click();})();", null)
+tvStatus.text = "狀態：已點擊 $clickCount 次"
+}
+if (delayMs > 0) Thread.sleep(delayMs)
+} else {
+wasPresent = false
+Thread.sleep(50)
+}
+}
+}
+private fun captureWebView(): Bitmap? {
+var bitmap: Bitmap? = null
+val latch = CountDownLatch(1)
+mainHandler.post {
+if (webView.width > 0 && webView.height > 0) {
+bitmap = Bitmap.createBitmap(webView.width, webView.height, Bitmap.Config.ARGB_8888)
+webView.draw(Canvas(bitmap!!))
+}
+latch.countDown()
+}
+latch.await()
+return bitmap
+}
+private fun findImageTemplate(screen: Bitmap, template: Bitmap, threshold: Double): Point? {
+if (template.width > screen.width || template.height > screen.height) return null
+val sMat = Mat(); val tMat = Mat(); val rMat = Mat()
+Utils.bitmapToMat(screen, sMat); Utils.bitmapToMat(template, tMat)
+Imgproc.cvtColor(sMat, sMat, Imgproc.COLOR_RGBA2GRAY)
+Imgproc.cvtColor(tMat, tMat, Imgproc.COLOR_RGBA2GRAY)
+Imgproc.matchTemplate(sMat, tMat, rMat, Imgproc.TM_CCOEFF_NORMED)
+val mmr = Core.minMaxLoc(rMat)
+sMat.release(); tMat.release(); rMat.release()
+return if (mmr.maxVal >= threshold) Point((mmr.maxLoc.x + template.width / 2.0).toInt(), (mmr.maxLoc.y + template.height / 2.0).toInt()) else null
+}
+}
+EOF
+- name: Build Debug APK
+run: |
+gradle wrapper --gradle-version 8.4
+./gradlew assembleDebug
+- name: Upload APK
+uses: actions/upload-artifact@v4
+with:
+name: WebAutoClicker-APK
+path: app/build/outputs/apk/debug/app-debug.apk
+---
