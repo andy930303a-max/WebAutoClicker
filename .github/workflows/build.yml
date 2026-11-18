@@ -8,158 +8,62 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-      - name: Create Files
-        run: |
-          mkdir -p app/src/main/java/com/example/webautoclicker
-          mkdir -p app/src/main/res/layout
-
-          cat << 'EOF' > gradle.properties
-          android.useAndroidX=true
-          org.gradle.jvmargs=-Xmx4g
-          EOF
-
-          cat << 'EOF' > settings.gradle.kts
-          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
-          rootProject.name = "WebAutoClicker"
-          include(":app")
-          EOF
-
-          cat << 'EOF' > build.gradle.kts
-          plugins {
-              id("com.android.application") version "8.2.2" apply false
-              id("org.jetbrains.kotlin.android") version "1.9.22" apply false
-          }
-          EOF
-
-          cat << 'EOF' > app/build.gradle.kts
-          plugins {
-              id("com.android.application")
-              id("org.jetbrains.kotlin.android")
-          }
-          android {
-              namespace = "com.example.webautoclicker"
-              compileSdk = 34
-              defaultConfig {
-                  applicationId = "com.example.webautoclicker"
-                  minSdk = 24
-                  targetSdk = 34
-                  versionCode = 1
-                  versionName = "1.0"
-              }
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-              kotlinOptions {
-                  jvmTarget = "17"
-              }
-          }
-          dependencies {
-              implementation("androidx.core:core-ktx:1.12.0")
-              implementation("androidx.appcompat:appcompat:1.6.1")
-              implementation("com.google.android.material:material:1.11.0")
-              implementation("org.opencv:opencv:4.9.0")
-          }
-          EOF
-
-          cat << 'EOF' > app/src/main/AndroidManifest.xml
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://android.com">
-              <uses-permission android:name="android.permission.INTERNET" />
-              <application
-                  android:label="網頁自動點擊器"
-                  android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
-                  android:usesCleartextTraffic="true">
-                  <activity android:name=".MainActivity" android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          EOF
-
-      - name: Create UI and Code
+      - name: Generate and Build
         run: |
           python3 -c '
-          open("app/src/main/res/layout/activity_main.xml","w").write("""<LinearLayout xmlns:android="http://android.com" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="12dp"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"><EditText android:id="@+id/etUrl" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="https://"/><Button android:id="@+id/btnLoadUrl" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="前往"/></LinearLayout><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"><Button android:id="@+id/btnSelectImg" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="選圖"/><ImageView android:id="@+id/ivTargetPreview" android:layout_width="40dp" android:layout_height="40dp"/><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="相似度:"/><EditText android:id="@+id/etConfidence" android:layout_width="55dp" android:layout_height="wrap_content" android:text="0.85"/></LinearLayout><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"><RadioGroup android:id="@+id/rgMode" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal"><RadioButton android:id="@+id/rbOnce" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:text="點一次"/><RadioButton android:id="@+id/rbLoop" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="連點"/></RadioGroup><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="冷卻:"/><EditText android:id="@+id/etDelay" android:layout_width="50dp" android:layout_height="wrap_content" android:text="0.5"/></LinearLayout><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"><TextView android:id="@+id/tvStatus" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="待機中"/><Button android:id="@+id/btnStart" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="開始"/><Button android:id="@+id/btnStop" android:layout_width="wrap_content" android:layout_height="wrap_content" android:enabled="false" android:text="停止"/></LinearLayout><WebView android:id="@+id/webView" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/></LinearLayout>""")
-          code = """package com.example.webautoclicker
-          import android.annotation.SuppressLint
-          import android.graphics.*
-          import android.net.Uri
-          import android.os.*
-          import android.webkit.*
-          import android.widget.*
-          import androidx.activity.result.contract.ActivityResultContracts
-          import androidx.appcompat.app.AppCompatActivity
-          import org.opencv.android.*
-          import org.opencv.core.*
-          import org.opencv.imgproc.Imgproc
-          import java.util.concurrent.*
-          import java.util.concurrent.atomic.AtomicBoolean
-          class MainActivity : AppCompatActivity() {
-              private var targetBitmap: Bitmap? = null
-              private val isRunning = AtomicBoolean(false)
-              private val mainHandler = Handler(Looper.getMainLooper())
-              private val executor = Executors.newSingleThreadExecutor()
-              private lateinit var webView: WebView
-              private lateinit var tvStatus: TextView
-              private lateinit var btnStart: Button
-              private lateinit var btnStop: Button
-              private val pickImg = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-                  uri?.let {
-                      val bmp = BitmapFactory.decodeStream(contentResolver.openInputStream(it))
-                      if (bmp != null && bmp.width >= 5) { targetBitmap = bmp; findViewById<ImageView>(R.id.ivTargetPreview).setImageBitmap(bmp); tvStatus.text = "已載入圖片" }
-                  }
-              }
-              @SuppressLint("SetJavaScriptEnabled")
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  setContentView(R.layout.activity_main)
-                  OpenCVLoader.initLocal()
-                  webView = findViewById(R.id.webView); tvStatus = findViewById(R.id.tvStatus); btnStart = findViewById(R.id.btnStart); btnStop = findViewById(R.id.btnStop)
-                  webView.settings.apply { javaScriptEnabled = true; domStorageEnabled = true; useWideViewPort = true; loadWithOverviewMode = true }
-                  webView.webViewClient = WebViewClient()
-                  findViewById<Button>(R.id.btnLoadUrl).setOnClickListener { val u = findViewById<EditText>(R.id.etUrl).text.toString().trim(); if (u.startsWith("http")) webView.loadUrl(u) }
-                  findViewById<Button>(R.id.btnSelectImg).setOnClickListener { pickImg.launch("image/*") }
-                  btnStart.setOnClickListener {
-                      val t = targetBitmap ?: return@setOnClickListener
-                      val c = findViewById<EditText>(R.id.etConfidence).text.toString().toDoubleOrNull() ?: 0.85
-                      val d = ((findViewById<EditText>(R.id.etDelay).text.toString().toDoubleOrNull() ?: 0.5) * 1000).toLong()
-                      val once = findViewById<RadioGroup>(R.id.rgMode).checkedRadioButtonId == R.id.rbOnce
-                      isRunning.set(true); btnStart.isEnabled = false; btnStop.isEnabled = true; tvStatus.text = "偵測中..."
-                      executor.execute {
-                          var was = false; var cnt = 0
-                          while (isRunning.get()) {
-                              var scr: Bitmap? = null; val l = CountDownLatch(1)
-                              mainHandler.post { if (webView.width > 0) { scr = Bitmap.createBitmap(webView.width, webView.height, Bitmap.Config.ARGB_8888); webView.draw(Canvas(scr!!)) }; l.countDown() }
-                              l.await()
-                              val s = scr ?: continue
-                              val sM = Mat(); val tM = Mat(); val rM = Mat()
-                              Utils.bitmapToMat(s, sM); Utils.bitmapToMat(t, tM); s.recycle()
-                              Imgproc.cvtColor(sM, sM, Imgproc.COLOR_RGBA2GRAY); Imgproc.cvtColor(tM, tM, Imgproc.COLOR_RGBA2GRAY)
-                              Imgproc.matchTemplate(sM, tM, rM, Imgproc.TM_CCOEFF_NORMED)
-                              val mmr = Core.minMaxLoc(rM); sM.release(); tM.release(); rM.release()
-                              if (mmr.maxVal >= c) {
-                                  if (once && was) { Thread.sleep(50); continue }
-                                  was = true; cnt++
-                                  val den = resources.displayMetrics.density
-                                  val cx = ((mmr.maxLoc.x + t.width / 2.0) / den).toInt(); val cy = ((mmr.maxLoc.y + t.height / 2.0) / den).toInt()
-                                  mainHandler.post { webView.evaluateJavascript("(function(){var e=document.elementFromPoint($cx,$cy);if(e)e.click();})();", null); tvStatus.text = "已點擊 $cnt 次" }
-                                  if (d > 0) Thread.sleep(d)
-                              } else { was = false; Thread.sleep(50) }
-                          }
-                      }
-                  }
-                  btnStop.setOnClickListener { isRunning.set(false); btnStart.isEnabled = true; btnStop.isEnabled = false; tvStatus.text = "已停止" }
-              }
-          }"""
-          open("app/src/main/java/com/example/webautoclicker/MainActivity.kt","w").write("\n".join(line.strip() for line in code.splitlines()))
+          import base64, zlib, json, os
+          data = """
+          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
+          53yhvC5zxkOOj/8Djf4kYA==
+          """
+          files = json.loads(zlib.decompress(base64.b64decode("".join(data.split()))).decode("utf-8"))
+          for path, content in files.items():
+              os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+              with open(path, "w", encoding="utf-8") as f:
+                  f.write(content)
           '
-      - name: Build APK
-        run: |
           gradle wrapper --gradle-version 8.4
           ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
